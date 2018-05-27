@@ -188,9 +188,8 @@ impl<'a, 'gcx, 'tcx> Builder<'a, 'gcx, 'tcx> {
                     self.user_assert_ty(block, ty, var, irrefutable_pat.span);
                 }
 
-                unpack!(block = self.into(&place, block, initializer));
                 self.schedule_drop_for_binding(var, irrefutable_pat.span, OutsideGuard);
-                block.unit()
+                self.into(&place, block, initializer)
             }
             _ => {
                 let place = unpack!(block = self.as_place(block, initializer));
