@@ -45,6 +45,7 @@ fn main() {
     // *after* the let result (tho they have the same scope
     // as far as scope-based borrowck goes).
     assert_eq!(get(), vec![0, 2, 3, 1]);
+//    assert_eq!(get(), vec![3,1,0,2]);
 
     let _ = std::panic::catch_unwind(|| {
         (d(4), &d(5), d(6), &d(7), panic!(InjectedFailure));

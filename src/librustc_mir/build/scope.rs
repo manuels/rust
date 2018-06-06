@@ -144,12 +144,12 @@ struct DropData<'tcx> {
     /// place to drop
     location: Place<'tcx>,
 
-    /// Whether this is a full value Drop, or just a StorageDead.
+    /// Whether this is a value Drop or a StorageDead.
     kind: DropKind
 }
 
 #[derive(Debug, Default, Clone, Copy)]
-struct CachedBlock {
+pub struct CachedBlock {
     /// The cached block for the cleanups-on-diverge path. This block
     /// contains code to run the current drop and all the preceding
     /// drops (i.e. those having lower index in Drop’s Scope drop
@@ -166,7 +166,7 @@ struct CachedBlock {
 }
 
 #[derive(Debug)]
-enum DropKind {
+pub enum DropKind {
     Value {
         cached_block: CachedBlock,
     },
@@ -630,17 +630,20 @@ impl<'a, 'gcx, 'tcx> Builder<'a, 'gcx, 'tcx> {
                          span: Span,
                          region_scope: region::Scope,
                          place: &Place<'tcx>,
-                         place_ty: Ty<'tcx>) {
+                         place_ty: Ty<'tcx>,
+                         drop_kind: DropKind) {
         let needs_drop = self.hir.needs_drop(place_ty);
-        let drop_kind = if needs_drop {
-            DropKind::Value { cached_block: CachedBlock::default() }
-        } else {
-            // Only temps and vars need their storage dead.
+
+        if let DropKind::Storage = drop_kind {
             match *place {
-                Place::Local(index) if index.index() > self.arg_count => DropKind::Storage,
+                Place::Local(index) if index.index() > self.arg_count => (),
                 _ => return
             }
-        };
+        } else {
+            if !needs_drop {
+                return
+            }
+        }
 
         for scope in self.scopes.iter_mut().rev() {
             let this_scope = scope.region_scope == region_scope;

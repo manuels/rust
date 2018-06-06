@@ -13,6 +13,7 @@ use build::ForGuard::OutsideGuard;
 use build::matches::ArmHasGuard;
 use hair::*;
 use rustc::mir::*;
+use build::scope::{CachedBlock, DropKind};
 use rustc::hir;
 use syntax_pos::Span;
 
@@ -139,7 +140,12 @@ impl<'a, 'gcx, 'tcx> Builder<'a, 'gcx, 'tcx> {
 
                         this.visit_bindings(&pattern, &mut |this, _, _, node, span, _| {
                             this.storage_live_binding(block, node, span, OutsideGuard);
-                            this.schedule_drop_for_binding(node, span, OutsideGuard);
+
+                            let drop_kind = DropKind::Storage;
+                            this.schedule_drop_for_binding(node, span, OutsideGuard, drop_kind);
+
+                            let drop_kind = DropKind::Value { cached_block: CachedBlock::default() };
+                            this.schedule_drop_for_binding(node, span, OutsideGuard, drop_kind);
                         })
                     }
 

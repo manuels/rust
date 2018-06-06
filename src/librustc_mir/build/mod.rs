@@ -10,6 +10,8 @@
 
 
 use build;
+//use build::scope::{CachedBlock, DropKind};
+use build::scope::DropKind;
 use hair::cx::Cx;
 use hair::{LintLevel, BindingMode, PatternKind};
 use rustc::hir;
@@ -692,8 +694,13 @@ impl<'a, 'gcx, 'tcx> Builder<'a, 'gcx, 'tcx> {
             }
 
             // Make sure we drop (parts of) the argument even when not matched on.
+            let drop_kind = DropKind::Storage;
             self.schedule_drop(pattern.as_ref().map_or(ast_body.span, |pat| pat.span),
-                               argument_scope, &place, ty);
+                               argument_scope, &place, ty, drop_kind);
+
+            //let drop_kind = DropKind::Value { cached_block: CachedBlock::default() };
+            //self.schedule_drop(pattern.as_ref().map_or(ast_body.span, |pat| pat.span),
+            //                   argument_scope, &place, ty, drop_kind);
 
         }
 

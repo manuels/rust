@@ -12,6 +12,7 @@
 
 use build::{BlockAnd, BlockAndExtension, Builder};
 use build::expr::category::Category;
+use build::scope::{CachedBlock, DropKind};
 use hair::*;
 use rustc::middle::region;
 use rustc::mir::*;
@@ -79,7 +80,11 @@ impl<'a, 'gcx, 'tcx> Builder<'a, 'gcx, 'tcx> {
         // anything because no values with a destructor can be created in
         // a constant at this time, even if the type may need dropping.
         if let Some(temp_lifetime) = temp_lifetime {
-            this.schedule_drop(expr_span, temp_lifetime, &Place::Local(temp), expr_ty);
+            let drop_kind = DropKind::Storage;
+            this.schedule_drop(expr_span, temp_lifetime, &Place::Local(temp), expr_ty, drop_kind);
+
+            let drop_kind = DropKind::Value { cached_block: CachedBlock::default() };
+            this.schedule_drop(expr_span, temp_lifetime, &Place::Local(temp), expr_ty, drop_kind);
         }
 
         block.and(temp)

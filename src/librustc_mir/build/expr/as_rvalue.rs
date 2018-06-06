@@ -20,6 +20,7 @@ use rustc::middle::region;
 use rustc::ty::{self, Ty, UpvarSubsts};
 use rustc::mir::*;
 use rustc::mir::interpret::EvalErrorKind;
+use build::scope::{CachedBlock, DropKind};
 use syntax_pos::Span;
 
 impl<'a, 'gcx, 'tcx> Builder<'a, 'gcx, 'tcx> {
@@ -102,7 +103,11 @@ impl<'a, 'gcx, 'tcx> Builder<'a, 'gcx, 'tcx> {
                 });
                 if let Some(scope) = scope {
                     // schedule a shallow free of that memory, lest we unwind:
-                    this.schedule_drop(expr_span, scope, &Place::Local(result), value.ty);
+                    let drop_kind = DropKind::Storage;
+                    this.schedule_drop(expr_span, scope, &Place::Local(result), value.ty, drop_kind);
+
+                    let drop_kind = DropKind::Value { cached_block: CachedBlock::default() };
+                    this.schedule_drop(expr_span, scope, &Place::Local(result), value.ty, drop_kind);
                 }
 
                 // malloc some memory of suitable type (thus far, uninitialized):

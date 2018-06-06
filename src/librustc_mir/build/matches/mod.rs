@@ -16,6 +16,7 @@
 use build::{BlockAnd, BlockAndExtension, Builder};
 use build::{GuardFrame, GuardFrameLocal, LocalsForNode};
 use build::ForGuard::{self, OutsideGuard, WithinGuard};
+use build::scope::{CachedBlock  , DropKind};
 use rustc_data_structures::fx::FxHashMap;
 use rustc_data_structures::bitvec::BitVector;
 use rustc::ty::{self, Ty};
@@ -188,8 +189,17 @@ impl<'a, 'gcx, 'tcx> Builder<'a, 'gcx, 'tcx> {
                     self.user_assert_ty(block, ty, var, irrefutable_pat.span);
                 }
 
-                self.schedule_drop_for_binding(var, irrefutable_pat.span, OutsideGuard);
-                self.into(&place, block, initializer)
+                let block = self.into(&place, block, initializer);
+
+                let drop_kind = DropKind::Storage;
+                self.schedule_drop_for_binding(var, irrefutable_pat.span,
+                                               OutsideGuard, drop_kind);
+
+                let drop_kind = DropKind::Value { cached_block: CachedBlock::default() };
+                self.schedule_drop_for_binding(var, irrefutable_pat.span,
+                                               OutsideGuard, drop_kind);
+
+                block
             }
             _ => {
                 let place = unpack!(block = self.as_place(block, initializer));
@@ -288,12 +298,15 @@ impl<'a, 'gcx, 'tcx> Builder<'a, 'gcx, 'tcx> {
     pub fn schedule_drop_for_binding(&mut self,
                                      var: NodeId,
                                      span: Span,
-                                     for_guard: ForGuard) {
+                                     for_guard: ForGuard,
+                                     drop_kind: DropKind) {
         let local_id = self.var_local_id(var, for_guard);
         let var_ty = self.local_decls[local_id].ty;
         let hir_id = self.hir.tcx().hir.node_to_hir_id(var);
         let region_scope = self.hir.region_scope_tree.var_scope(hir_id.local_id);
-        self.schedule_drop(span, region_scope, &Place::Local(local_id), var_ty);
+        // where is the DropKind?
+        // region_scope.drops[].kind
+        self.schedule_drop(span, region_scope, &Place::Local(local_id), var_ty, drop_kind);
     }
 
     pub fn visit_bindings<F>(&mut self, pattern: &Pattern<'tcx>, f: &mut F)
@@ -951,8 +964,10 @@ impl<'a, 'gcx, 'tcx> Builder<'a, 'gcx, 'tcx> {
                 block, binding.var_id, binding.span, WithinGuard);
             // Question: Why schedule drops if bindings are all
             // shared-&'s?  Answer: Because schedule_drop_for_binding
-            // also emits StorageDead's for those locals.
-            self.schedule_drop_for_binding(binding.var_id, binding.span, WithinGuard);
+            // should emit StorageDead's for those locals.
+            self.schedule_drop_for_binding(binding.var_id, binding.span, WithinGuard, DropKind::Storage);
+            let drop_kind = DropKind::Value { cached_block: CachedBlock::default() };
+            self.schedule_drop_for_binding(binding.var_id, binding.span, WithinGuard, drop_kind);
             match binding.binding_mode {
                 BindingMode::ByValue => {
                     let rvalue = Rvalue::Ref(re_empty, BorrowKind::Shared, binding.source.clone());
@@ -990,7 +1005,12 @@ impl<'a, 'gcx, 'tcx> Builder<'a, 'gcx, 'tcx> {
                     // without maintaining such state.)
                     let local_for_arm_body = self.storage_live_binding(
                         block, binding.var_id, binding.span, OutsideGuard);
-                    self.schedule_drop_for_binding(binding.var_id, binding.span, OutsideGuard);
+
+                    let drop_kind = DropKind::Storage;
+                    self.schedule_drop_for_binding(binding.var_id, binding.span, OutsideGuard, drop_kind);
+
+                    let drop_kind = DropKind::Value { cached_block: CachedBlock::default() };
+                    self.schedule_drop_for_binding(binding.var_id, binding.span, OutsideGuard, drop_kind);
 
                     // rust-lang/rust#27282: this potentially mutable
                     // borrow may require a cast in the future to
@@ -1025,7 +1045,13 @@ impl<'a, 'gcx, 'tcx> Builder<'a, 'gcx, 'tcx> {
             let source_info = self.source_info(binding.span);
             let local = self.storage_live_binding(block, binding.var_id, binding.span,
                                                   OutsideGuard);
-            self.schedule_drop_for_binding(binding.var_id, binding.span, OutsideGuard);
+
+            let drop_kind = DropKind::Storage;
+            self.schedule_drop_for_binding(binding.var_id, binding.span, OutsideGuard, drop_kind);
+
+            let drop_kind = DropKind::Value { cached_block: CachedBlock::default() };
+            self.schedule_drop_for_binding(binding.var_id, binding.span, OutsideGuard, drop_kind);
+
             let rvalue = match binding.binding_mode {
                 BindingMode::ByValue => {
                     Rvalue::Use(self.consume_by_copy_or_move(binding.source.clone()))
